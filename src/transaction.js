@@ -309,3 +309,5 @@ const isValidAddress = (address) => {
     }
     return true;
 };
+
+exports.isValidAddress = isValidAddress;
