@@ -43,6 +43,9 @@ const getTransactionId = (transaction) => {
 exports.getTransactionId = getTransactionId;
 
 const validateTransaction = (transaction, aUnspentTxOuts) => {
+    if (!isValidTransactionStructure(transaction)) {
+        return false;
+    }
     if (getTransactionId(transaction) !== transaction.id) {
         console.log('invalid tx id: ' + transaction.id);
         return false;
@@ -66,6 +69,7 @@ const validateTransaction = (transaction, aUnspentTxOuts) => {
     }
     return true;
 };
+exports.validateTransaction = validateTransaction;
 
 const validateBlockTransactions = (aTransactions, aUnspentTxOuts, blockIndex) => {
     const coinbaseTx = aTransactions[0];
@@ -138,7 +142,12 @@ const validateTxIn = (txIn, transaction, aUnspentTxOuts) => {
     }
     const address = referencedUTxOut.address;
     const key = ec.keyFromPublic(address, 'hex');
-    return key.verify(transaction.id, txIn.signature);
+    const validSignature = key.verify(transaction.id, txIn.signature);
+    if (!validSignature) {
+        console.log('invalid txIn signature: %s txId: %s address: %s', txIn.signature, transaction.id, referencedUTxOut.address);
+        return false;
+    }
+    return true;
 };
 
 const getTxInAmount = (txIn, aUnspentTxOuts) => {
@@ -199,9 +208,6 @@ const updateUnspentTxOuts = (newTransactions, aUnspentTxOuts) => {
 };
 
 const processTransactions = (aTransactions, aUnspentTxOuts, blockIndex) => {
-    if (!isValidTransactionsStructure(aTransactions)) {
-        return null;
-    }
     if (!validateBlockTransactions(aTransactions, aUnspentTxOuts, blockIndex)) {
         console.log('invalid block transactions');
         return null;
