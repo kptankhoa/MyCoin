@@ -3,6 +3,7 @@ const _ = require("lodash");
 const transaction = require("./transaction");
 const transactionPool = require("./transactionPool");
 const wallet = require("./wallet");
+const p2p = require("./p2p");
 
 class Block {
     constructor(index, hash, previousHash, timestamp, data, difficulty, nonce) {
@@ -75,7 +76,7 @@ const generateRawNextBlock = (blockData) => {
     const nextTimestamp = getCurrentTimestamp();
     const newBlock = findBlock(nextIndex, previousBlock.hash, nextTimestamp, blockData, difficulty);
     if (addBlockToChain(newBlock)) {
-        // p2p_1.broadcastLatest();
+        p2p.broadcastLatest();
         return newBlock;
     } else {
         return null;
@@ -129,7 +130,7 @@ exports.getAccountBalance = getAccountBalance;
 const sendTransaction = (address, amount) => {
     const tx = wallet.createTransaction(address, amount, wallet.getPrivateFromWallet(), getUnspentTxOuts(), transactionPool.getTransactionPool());
     transactionPool.addToTransactionPool(tx, getUnspentTxOuts());
-    // p2p_1.broadCastTransactionPool();
+    p2p.broadCastTransactionPool();
     return tx;
 };
 exports.sendTransaction = sendTransaction;
@@ -261,7 +262,7 @@ const replaceChain = (newBlocks) => {
         blockchain = newBlocks;
         setUnspentTxOuts(aUnspentTxOuts);
         transactionPool.updateTransactionPool(unspentTxOuts);
-        // p2p_1.broadcastLatest();
+        p2p.broadcastLatest();
     }
     else {
         console.log('Received blockchain invalid');

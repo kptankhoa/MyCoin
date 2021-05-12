@@ -1,95 +1,121 @@
+const bodyParser = require("body-parser");
+const express = require("express");
+const _ = require("lodash");
 const blockchain = require("./blockchain");
-const wallet = require("./wallet");
+const p2p = require("./p2p");
 const transactionPool = require("./transactionPool");
-wallet.initWallet();
+const wallet = require("./wallet");
+const httpPort = parseInt(process.env.HTTP_PORT) || 3001;
+const p2pPort = parseInt(process.env.P2P_PORT) || 6001;
 
-let blockData = [{
-    txIns: [{signature: "", txOutId: "", txOutIndex: 1}],
-    txOuts:
-        [{
-            address: "04bfcab8722991ae774db48f934ca79cfb7dd991229153b9f732ba5334aafcd8e7266e47076996b55a14bf9913ee3145ce0cfc1372ada8ada74bd287450313534a",
-            amount: 50
-        }],
-    id: "f089e8113094fab66b511402ecce021d0c1f664a719b5df1652a24d532b2f749"
-}]
-
-
-const readline = require('readline').createInterface({
-    input: process.stdin,
-    output: process.stdout
-});
-let next = 0;
-function loop() {
-    console.log('1. getBlockchain');
-    console.log('2. getUnspentTxOuts');
-    console.log('3. getMyUnspentTransactionOutputs');
-    console.log('4. generateRawNextBlock');
-    console.log('5. generateNextBlock');
-    console.log('6. getAccountBalance');
-    console.log('7. getPublicFromWallet')
-    console.log('8. generateNextBlockWithTransaction');
-    console.log('9. sendTransaction');
-    console.log('10. getTransactionPool');
-    console.log('0. exit');
-    readline.question('Choice?', choice => {
-        switch (parseInt(choice)) {
-            case 0:
-                readline.close();
-                process.exit();
-                break;
-            case 1:
-                console.log('Blockchain: ');
-                console.log(blockchain.getBlockchain());
-                break;
-            case 2:
-                console.log('UnspentTxOut:');
-                console.log(blockchain.getUnspentTxOuts());
-                break;
-            case 3:
-                console.log('getMyUnspentTransactionOutputs:');
-                console.log(blockchain.getMyUnspentTransactionOutputs());
-                break;
-            case 4:
-                let newBlock1 = blockchain.generateRawNextBlock(blockData);
-                if (newBlock1 === null) {
-                    console.log("generateRawNextBlock failed!");
-                } else {
-                    console.log(newBlock1);
-                }
-                break;
-            case 5:
-                console.log('generateNextBlock...')
-                let newBlock2 = blockchain.generateNextBlock();
-                if (newBlock2 === null) {
-                    console.log("generateNextBlock failed!");
-                } else {
-                    console.log(newBlock2);
-                }
-                break;
-            case 6:
-                let balance = blockchain.getAccountBalance();
-                console.log('balance: ' + balance);
-                break;
-            case 7:
-                const address = wallet.getPublicFromWallet();
-                console.log('Address: ' + address);
-                break;
-            case 8:
-                console.log('ganeratefromTx...')
-                const resp = blockchain.generateNextBlockWithTransaction("04bfcab8722991ae774db48f934ca79cfb7dd991229153b9f732ba5334aafcd8e7266e47076996b55a14bf9913ee3145ce0cfc1372ada8ada74bd287450313534b", 30);
-                console.log(resp);
-            case 9:
-                break;
-            case 10:
-                console.log(transactionPool.getTransactionPool());
-                break;
-            default:
-                loop();
-
+const initHttpServer = (myHttpPort) => {
+    const app = express();
+    app.use(bodyParser.json());
+    app.use((err, req, res, next) => {
+        if (err) {
+            res.status(400).send(err.message);
         }
-        loop();
-    })
-}
+    });
+    app.get('/blocks', (req, res) => {
+        res.send(blockchain.getBlockchain());
+    });
+    app.get('/block/:hash', (req, res) => {
+        const block = _.find(blockchain.getBlockchain(), { 'hash': req.params.hash });
+        res.send(block);
+    });
+    app.get('/transaction/:id', (req, res) => {
+        const tx = _(blockchain.getBlockchain())
+            .map((blocks) => blocks.data)
+            .flatten()
+            .find({ 'id': req.params.id });
+        res.send(tx);
+    });
+    app.get('/address/:address', (req, res) => {
+        const unspentTxOuts = _.filter(blockchain.getUnspentTxOuts(), (uTxO) => uTxO.address === req.params.address);
+        res.send({ 'unspentTxOuts': unspentTxOuts });
+    });
+    app.get('/unspentTransactionOutputs', (req, res) => {
+        res.send(blockchain.getUnspentTxOuts());
+    });
+    app.get('/myUnspentTransactionOutputs', (req, res) => {
+        res.send(blockchain.getMyUnspentTransactionOutputs());
+    });
+    app.post('/mineRawBlock', (req, res) => {
+        if (req.body.data == null) {
+            res.send('data parameter is missing');
+            return;
+        }
+        const newBlock = blockchain.generateRawNextBlock(req.body.data);
+        if (newBlock === null) {
+            res.status(400).send('could not generate block');
+        }
+        else {
+            res.send(newBlock);
+        }
+    });
+    app.post('/mineBlock', (req, res) => {
+        const newBlock = blockchain.generateNextBlock();
+        if (newBlock === null) {
+            res.status(400).send('could not generate block');
+        }
+        else {
+            res.send(newBlock);
+        }
+    });
+    app.get('/balance', (req, res) => {
+        const balance = blockchain.getAccountBalance();
+        res.send({ 'balance': balance });
+    });
+    app.get('/address', (req, res) => {
+        const address = wallet.getPublicFromWallet();
+        res.send({ 'address': address });
+    });
+    app.post('/mineTransaction', (req, res) => {
+        const address = req.body.address;
+        const amount = req.body.amount;
+        try {
+            const resp = blockchain.generateNextBlockWithTransaction(address, amount);
+            res.send(resp);
+        }
+        catch (e) {
+            console.log(e.message);
+            res.status(400).send(e.message);
+        }
+    });
+    app.post('/sendTransaction', (req, res) => {
+        try {
+            const address = req.body.address;
+            const amount = req.body.amount;
+            if (address === undefined || amount === undefined) {
+                throw Error('invalid address or amount');
+            }
+            const resp = blockchain.sendTransaction(address, amount);
+            res.send(resp);
+        }
+        catch (e) {
+            console.log(e.message);
+            res.status(400).send(e.message);
+        }
+    });
+    app.get('/transactionPool', (req, res) => {
+        res.send(transactionPool.getTransactionPool());
+    });
+    app.get('/peers', (req, res) => {
+        res.send(p2p.getSockets().map((s) => s._socket.remoteAddress + ':' + s._socket.remotePort));
+    });
+    app.post('/addPeer', (req, res) => {
+        p2p.connectToPeers(req.body.peer);
+        res.send();
+    });
+    app.post('/stop', (req, res) => {
+        res.send({ 'msg': 'stopping server' });
+        process.exit();
+    });
+    app.listen(myHttpPort, () => {
+        console.log('Listening http on port: ' + myHttpPort);
+    });
+};
 
-loop();
-
+initHttpServer(httpPort);
+p2p.initP2PServer(p2pPort);
+wallet.initWallet();

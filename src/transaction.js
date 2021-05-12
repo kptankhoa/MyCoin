@@ -105,6 +105,7 @@ const hasDuplicates = (txIns) => {
         })
         .includes(true);
 };
+exports.hasDuplicates = hasDuplicates;
 
 const validateCoinbaseTx = (transaction, blockIndex) => {
     if (transaction == null) {
