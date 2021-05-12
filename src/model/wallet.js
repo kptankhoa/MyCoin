@@ -2,6 +2,7 @@ const elliptic = require("elliptic");
 const fs = require("fs");
 const _ = require("lodash");
 const transaction = require("./transaction");
+const dataHandler = require("./dataHandler");
 const EC = new elliptic.ec('secp256k1');
 const privateKeyLocation = 'node/wallet/private_key';
 
@@ -23,7 +24,32 @@ const generatePrivateKey = () => {
     const privateKey = keyPair.getPrivate();
     return privateKey.toString(16);
 };
-exports.generatePrivateKey = generatePrivateKey;
+
+const registerNewWallet = () => {
+    const keyPair = EC.genKeyPair();
+    const privateKey = keyPair.getPrivate().toString(16);
+    const publicKey = keyPair.getPublic().encode('hex');
+    require('./blockchain').generateRegisterRwBlock(publicKey);
+    dataHandler.addKey({privateKey, publicKey});
+    return {privateKey, publicKey};
+};
+exports.registerNewWallet = registerNewWallet;
+
+const isKeyExist = (privateKey) => {
+    const keys = dataHandler.getKeys();
+    for (const key of keys) {
+        if (key.privateKey === privateKey)
+            return true;
+    }
+    return false;
+}
+exports.isKeyExist = isKeyExist;
+
+const getWalletFromPrivate = (privateKey) => {
+    const key = EC.keyFromPrivate(privateKey, 'hex');
+    return key.getPublic().encode('hex');
+}
+exports.getWalletFromPrivate = getWalletFromPrivate;
 
 const initWallet = () => {
     // let's not override existing private keys

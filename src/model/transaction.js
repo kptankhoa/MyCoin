@@ -4,6 +4,7 @@ const _ = require("lodash");
 const ec = new ecdsa.ec('secp256k1');
 
 const COINBASE_AMOUNT = 50;
+exports.COINBASE_AMOUNT = COINBASE_AMOUNT;
 
 class UnspentTxOut {
     constructor(txOutId, txOutIndex, address, amount) {

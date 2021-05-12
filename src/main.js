@@ -1,21 +1,50 @@
-const bodyParser = require("body-parser");
 const express = require("express");
+const fs = require("fs");
+const session = require('express-session');
+const morgan = require('morgan');
+const cors = require('cors');
+const cookieParser = require('cookie-parser');
 const _ = require("lodash");
-const blockchain = require("./blockchain");
-const p2p = require("./p2p");
-const transactionPool = require("./transactionPool");
-const wallet = require("./wallet");
+require('express-async-errors');
+
+const blockchain = require("./model/blockchain");
+const p2p = require("./model/p2p");
+const transactionPool = require("./model/transactionPool");
+const wallet = require("./model/wallet");
+
 const httpPort = parseInt(process.env.HTTP_PORT) || 3001;
 const p2pPort = parseInt(process.env.P2P_PORT) || 6001;
 
 const initHttpServer = (myHttpPort) => {
     const app = express();
-    app.use(bodyParser.json());
-    app.use((err, req, res, next) => {
-        if (err) {
-            res.status(400).send(err.message);
-        }
+    app.use(express.json());
+    app.use(cookieParser());
+    app.use(morgan('dev'));
+    app.use(cors());
+    app.use(session({ secret: "not a secret", resave: true, saveUninitialized: true }));
+
+    app.post('/signup',(req, res) => {
+        const keyPair = wallet.registerNewWallet()
+        //blockchain.sendTransaction(keyPair.publicKey, require('./model/transaction').COINBASE_AMOUNT);
+        res.send(keyPair);
     });
+    app.post('/signin',(req, res) => {
+        const {privateKey} = req.body;
+        if(wallet.isKeyExist(privateKey)){
+            if(!req.session.user){
+                req.session.user={};
+            }
+            fs.writeFileSync('node/wallet/private_key', privateKey);
+            const publicKey = wallet.getWalletFromPrivate(privateKey);
+            req.session.user = {...publicKey};
+            //redirect to user wallet
+            res.json({
+                'message': 'logged in'
+            })
+        }
+        //redirect to login page
+        res.status(204);
+    })
     app.get('/blocks', (req, res) => {
         res.send(blockchain.getBlockchain());
     });
@@ -111,6 +140,26 @@ const initHttpServer = (myHttpPort) => {
         res.send({ 'msg': 'stopping server' });
         process.exit();
     });
+
+    app.use(function (req, res, next) {
+        res.status(404).json({
+            error_message: 'Endpoint not found'
+        });
+    });
+
+    app.use(function (err, req, res, next) {
+        console.error(err.stack);
+        res.status(500).json({
+            error_message: 'Something broke!'
+        });
+    });
+
+    app.use((err, req, res, next) => {
+        if (err) {
+            res.status(400).send(err.message);
+        }
+    });
+
     app.listen(myHttpPort, () => {
         console.log('Listening http on port: ' + myHttpPort);
     });

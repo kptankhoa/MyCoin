@@ -4,6 +4,7 @@ const transaction = require("./transaction");
 const transactionPool = require("./transactionPool");
 const wallet = require("./wallet");
 const p2p = require("./p2p");
+const dataHandler = require("./dataHandler");
 
 class Block {
     constructor(index, hash, previousHash, timestamp, data, difficulty, nonce) {
@@ -18,17 +19,24 @@ class Block {
 }
 exports.Block = Block;
 
-const genesisTransaction = {
-    'txIns': [{ 'signature': '', 'txOutId': '', 'txOutIndex': 0 }],
-    'txOuts': [{
-        'address': '04bfcab8722991ae774db48f934ca79cfb7dd991229153b9f732ba5334aafcd8e7266e47076996b55a14bf9913ee3145ce0cfc1372ada8ada74bd287450313534a',
-        'amount': 50
-    }],
-    'id': 'e655f6a5f26dc9b4cac6e46f52336428287759cf81ef5ff10854f69d68f43fa3'
-};
-const genesisBlock = new Block(0, 'a6737751dabaaafd8a080bdd793a77b33b83bcb6501450be77929b23b6f551b9', '', Math.round(Date.now()/1000), [genesisTransaction], 0, 0);
-let blockchain = [genesisBlock];
-let unspentTxOuts = transaction.processTransactions(blockchain[0].data, [], 0);
+let blockchain = dataHandler.getChain();
+if(!blockchain) {
+    const genesisTransaction = {
+        'txIns': [{ 'signature': '', 'txOutId': '', 'txOutIndex': 0 }],
+        'txOuts': [{
+            'address': '04bfcab8722991ae774db48f934ca79cfb7dd991229153b9f732ba5334aafcd8e7266e47076996b55a14bf9913ee3145ce0cfc1372ada8ada74bd287450313534a',
+            'amount': 50
+        }],
+        'id': 'e655f6a5f26dc9b4cac6e46f52336428287759cf81ef5ff10854f69d68f43fa3'
+    };
+    const genesisBlock = new Block(0, 'a6737751dabaaafd8a080bdd793a77b33b83bcb6501450be77929b23b6f551b9', '', Math.round(Date.now()/1000), [genesisTransaction], 0, 0);
+    blockchain = [genesisBlock];
+    dataHandler.rewriteChain(blockchain);
+}
+let unspentTxOuts = [];
+for (const block of blockchain) {
+    unspentTxOuts = transaction.processTransactions(block.data, unspentTxOuts, block.index);
+}
 
 const getBlockchain = () => blockchain;
 exports.getBlockchain = getBlockchain;
@@ -76,6 +84,7 @@ const generateRawNextBlock = (blockData) => {
     const nextTimestamp = getCurrentTimestamp();
     const newBlock = findBlock(nextIndex, previousBlock.hash, nextTimestamp, blockData, difficulty);
     if (addBlockToChain(newBlock)) {
+        dataHandler.rewriteChain(blockchain);
         p2p.broadcastLatest();
         return newBlock;
     } else {
@@ -92,10 +101,17 @@ exports.getMyUnspentTransactionOutputs = getMyUnspentTransactionOutputs;
 
 const generateNextBlock = () => {
     const coinbaseTx = transaction.getCoinbaseTransaction(wallet.getPublicFromWallet(), getLatestBlock().index + 1);
-    const blockData = [coinbaseTx];
+    const blockData = [coinbaseTx].concat(transactionPool.getTransactionPool());
     return generateRawNextBlock(blockData);
 };
 exports.generateNextBlock = generateNextBlock;
+
+const generateRegisterRwBlock = (address) => {
+    const coinbaseTx = transaction.getCoinbaseTransaction(address, getLatestBlock().index + 1);
+    const blockData = [coinbaseTx];
+    return generateRawNextBlock(blockData);
+};
+exports.generateRegisterRwBlock = generateRegisterRwBlock;
 
 const generateNextBlockWithTransaction = (receiverAddress, amount) => {
     if (!transaction.isValidAddress(receiverAddress)) {
@@ -262,6 +278,7 @@ const replaceChain = (newBlocks) => {
         blockchain = newBlocks;
         setUnspentTxOuts(aUnspentTxOuts);
         transactionPool.updateTransactionPool(unspentTxOuts);
+        dataHandler.rewriteChain(blockchain);
         p2p.broadcastLatest();
     }
     else {
