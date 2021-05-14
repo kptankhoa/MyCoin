@@ -17,19 +17,20 @@ class Block {
         this.nonce = nonce;
     }
 }
+
 exports.Block = Block;
 
 let blockchain = dataHandler.getChain();
-if(!blockchain) {
+if (!blockchain) {
     const genesisTransaction = {
-        'txIns': [{ 'signature': '', 'txOutId': '', 'txOutIndex': 0 }],
+        'txIns': [{'signature': '', 'txOutId': '', 'txOutIndex': 0}],
         'txOuts': [{
             'address': '04bfcab8722991ae774db48f934ca79cfb7dd991229153b9f732ba5334aafcd8e7266e47076996b55a14bf9913ee3145ce0cfc1372ada8ada74bd287450313534a',
             'amount': 50
         }],
         'id': 'e655f6a5f26dc9b4cac6e46f52336428287759cf81ef5ff10854f69d68f43fa3'
     };
-    const genesisBlock = new Block(0, 'a6737751dabaaafd8a080bdd793a77b33b83bcb6501450be77929b23b6f551b9', '', Math.round(Date.now()/1000), [genesisTransaction], 0, 0);
+    const genesisBlock = new Block(0, 'a6737751dabaaafd8a080bdd793a77b33b83bcb6501450be77929b23b6f551b9', '', Math.round(Date.now() / 1000), [genesisTransaction], 2, 0);
     blockchain = [genesisBlock];
     dataHandler.rewriteChain(blockchain);
 }
@@ -44,7 +45,7 @@ const getUnspentTxOuts = () => _.cloneDeep(unspentTxOuts);
 exports.getUnspentTxOuts = getUnspentTxOuts;
 // and txPool should be only updated at the same time
 const setUnspentTxOuts = (newUnspentTxOut) => {
-    console.log('replacing unspentTxouts with: %s', newUnspentTxOut);
+    console.log('replacing unspentTxouts');
     unspentTxOuts = newUnspentTxOut;
 };
 const getLatestBlock = () => blockchain[blockchain.length - 1];
@@ -106,12 +107,14 @@ const generateNextBlock = () => {
 };
 exports.generateNextBlock = generateNextBlock;
 
-const generateRegisterRwBlock = (address) => {
+const sendRegisterRwBlock = (address) => {
     const coinbaseTx = transaction.getCoinbaseTransaction(address, getLatestBlock().index + 1);
     const blockData = [coinbaseTx];
     return generateRawNextBlock(blockData);
+    // return transactionPool.addToTransactionPool(blockData, getUnspentTxOuts());
 };
-exports.generateRegisterRwBlock = generateRegisterRwBlock;
+
+exports.sendRegisterRwBlock = sendRegisterRwBlock;
 
 const generateNextBlockWithTransaction = (receiverAddress, amount) => {
     if (!transaction.isValidAddress(receiverAddress)) {
@@ -146,6 +149,7 @@ exports.getAccountBalance = getAccountBalance;
 const sendTransaction = (address, amount) => {
     const tx = wallet.createTransaction(address, amount, wallet.getPrivateFromWallet(), getUnspentTxOuts(), transactionPool.getTransactionPool());
     transactionPool.addToTransactionPool(tx, getUnspentTxOuts());
+    console.log("Broadcast transaction pool");
     p2p.broadCastTransactionPool();
     return tx;
 };
@@ -171,16 +175,13 @@ const isValidNewBlock = (newBlock, previousBlock) => {
     if (previousBlock.index + 1 !== newBlock.index) {
         console.log('invalid index');
         return false;
-    }
-    else if (previousBlock.hash !== newBlock.previousHash) {
+    } else if (previousBlock.hash !== newBlock.previousHash) {
         console.log('invalid previousHash');
         return false;
-    }
-    else if (!isValidTimestamp(newBlock, previousBlock)) {
+    } else if (!isValidTimestamp(newBlock, previousBlock)) {
         console.log('invalid timestamp');
         return false;
-    }
-    else if (!hasValidHash(newBlock)) {
+    } else if (!hasValidHash(newBlock)) {
         return false;
     }
     return true;
@@ -257,8 +258,7 @@ const addBlockToChain = (newBlock) => {
         if (retVal === null) {
             console.log('block is not valid in terms of transactions');
             return false;
-        }
-        else {
+        } else {
             blockchain.push(newBlock);
             setUnspentTxOuts(retVal);
             transactionPool.updateTransactionPool(unspentTxOuts);
@@ -280,8 +280,7 @@ const replaceChain = (newBlocks) => {
         transactionPool.updateTransactionPool(unspentTxOuts);
         dataHandler.rewriteChain(blockchain);
         p2p.broadcastLatest();
-    }
-    else {
+    } else {
         console.log('Received blockchain invalid');
     }
 };

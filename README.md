@@ -5,7 +5,7 @@ Subject: New Technologies in Software Development\
 Author: Khoa Phan - Student ID: 1712537\
 Based on: NaiveCoin - https://github.com/lhartikk/naivecoin
 
-###Installation
+### Installation
 ```
 npm install
 npm start

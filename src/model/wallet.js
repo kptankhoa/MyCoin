@@ -29,7 +29,7 @@ const registerNewWallet = () => {
     const keyPair = EC.genKeyPair();
     const privateKey = keyPair.getPrivate().toString(16);
     const publicKey = keyPair.getPublic().encode('hex');
-    require('./blockchain').generateRegisterRwBlock(publicKey);
+    require('./blockchain').sendRegisterRwBlock(publicKey);
     dataHandler.addKey({privateKey, publicKey});
     return {privateKey, publicKey};
 };
@@ -56,9 +56,10 @@ const initWallet = () => {
     if (fs.existsSync(privateKeyLocation)) {
         return;
     }
-    const newPrivateKey = generatePrivateKey();
-    fs.writeFileSync(privateKeyLocation, newPrivateKey);
-    console.log('new wallet with private key created to : %s', privateKeyLocation);
+    const newKeyPair = registerNewWallet();
+    // const newPrivateKey = generatePrivateKey();
+    fs.writeFileSync(privateKeyLocation, newKeyPair.privateKey);
+    console.log('New wallet with private key created to : %s', newKeyPair.privateKey);
 };
 exports.initWallet = initWallet;
 
@@ -93,9 +94,9 @@ const findTxOutsForAmount = (amount, myUnspentTxOuts) => {
             return { includedUnspentTxOuts, leftOverAmount };
         }
     }
-    const eMsg = 'Cannot create transaction from the available unspent transaction outputs.' +
+    const error_message = 'Cannot create transaction from the available unspent transaction outputs.' +
         ' Required amount:' + amount + '. Available unspentTxOuts:' + JSON.stringify(myUnspentTxOuts);
-    throw Error(eMsg);
+    throw Error(error_message);
 };
 
 const createTxOuts = (receiverAddress, myAddress, amount, leftOverAmount) => {

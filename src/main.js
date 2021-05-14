@@ -21,94 +21,106 @@ const initHttpServer = (myHttpPort) => {
     app.use(cookieParser());
     app.use(morgan('dev'));
     app.use(cors());
-    app.use(session({ secret: "not a secret", resave: true, saveUninitialized: true }));
+    app.use(session({secret: "not a secret", resave: true, saveUninitialized: true}));
 
-    app.post('/signup',(req, res) => {
+    app.post('/signup', (req, res) => {
         const keyPair = wallet.registerNewWallet()
-        //blockchain.sendTransaction(keyPair.publicKey, require('./model/transaction').COINBASE_AMOUNT);
-        res.send(keyPair);
+        res.json(keyPair);
     });
-    app.post('/signin',(req, res) => {
+    app.post('/signin', (req, res) => {
         const {privateKey} = req.body;
-        if(wallet.isKeyExist(privateKey)){
-            if(!req.session.user){
-                req.session.user={};
+        if (wallet.isKeyExist(privateKey)) {
+            if (!req.session.user) {
+                req.session.user = {};
             }
             fs.writeFileSync('node/wallet/private_key', privateKey);
             const publicKey = wallet.getWalletFromPrivate(privateKey);
             req.session.user = {...publicKey};
             //redirect to user wallet
-            res.json({
-                'message': 'logged in'
+            return res.json({
+                publicKey: publicKey,
+                balance: blockchain.getAccountBalance()
             })
         }
         //redirect to login page
-        res.status(204);
+        else {
+            res.status(400).json(
+                {error_message: 'Key not found!'}
+            );
+        }
+    })
+    app.get('/getWalletData', (req, res) => {
+        const publicKey = wallet.getPublicFromWallet();
+        const balance = blockchain.getAccountBalance();
+        const txPool = transactionPool.getTransactionPool();
+        res.json({publicKey, balance, txPool});
+    })
+    app.get('/getExplorerData', (req, res) => {
+        const txPool = transactionPool.getTransactionPool();
+        const chain = blockchain.getBlockchain();
+        res.json({txPool, chain});
     })
     app.get('/blocks', (req, res) => {
-        res.send(blockchain.getBlockchain());
+        res.json(blockchain.getBlockchain());
     });
     app.get('/block/:hash', (req, res) => {
-        const block = _.find(blockchain.getBlockchain(), { 'hash': req.params.hash });
-        res.send(block);
+        const block = _.find(blockchain.getBlockchain(), {'hash': req.params.hash});
+        res.json(block);
     });
     app.get('/transaction/:id', (req, res) => {
         const tx = _(blockchain.getBlockchain())
             .map((blocks) => blocks.data)
             .flatten()
-            .find({ 'id': req.params.id });
-        res.send(tx);
+            .find({'id': req.params.id});
+        res.json(tx);
     });
     app.get('/address/:address', (req, res) => {
         const unspentTxOuts = _.filter(blockchain.getUnspentTxOuts(), (uTxO) => uTxO.address === req.params.address);
-        res.send({ 'unspentTxOuts': unspentTxOuts });
+        res.json({'unspentTxOuts': unspentTxOuts});
     });
     app.get('/unspentTransactionOutputs', (req, res) => {
-        res.send(blockchain.getUnspentTxOuts());
+        res.json(blockchain.getUnspentTxOuts());
     });
     app.get('/myUnspentTransactionOutputs', (req, res) => {
-        res.send(blockchain.getMyUnspentTransactionOutputs());
+        res.json(blockchain.getMyUnspentTransactionOutputs());
     });
     app.post('/mineRawBlock', (req, res) => {
         if (req.body.data == null) {
-            res.send('data parameter is missing');
+            res.json('data parameter is missing');
             return;
         }
         const newBlock = blockchain.generateRawNextBlock(req.body.data);
         if (newBlock === null) {
-            res.status(400).send('could not generate block');
-        }
-        else {
-            res.send(newBlock);
+            res.status(400).json({error_message: 'could not generate block'});
+        } else {
+            res.json(newBlock);
         }
     });
     app.post('/mineBlock', (req, res) => {
         const newBlock = blockchain.generateNextBlock();
         if (newBlock === null) {
-            res.status(400).send('could not generate block');
-        }
-        else {
-            res.send(newBlock);
+            res.status(400).json({error_message: 'could not generate block'});
+        } else {
+            res.json(newBlock);
         }
     });
     app.get('/balance', (req, res) => {
         const balance = blockchain.getAccountBalance();
-        res.send({ 'balance': balance });
+        res.json({'balance': balance});
     });
     app.get('/address', (req, res) => {
         const address = wallet.getPublicFromWallet();
-        res.send({ 'address': address });
+        res.json({'address': address});
     });
     app.post('/mineTransaction', (req, res) => {
         const address = req.body.address;
         const amount = req.body.amount;
         try {
             const resp = blockchain.generateNextBlockWithTransaction(address, amount);
-            res.send(resp);
-        }
-        catch (e) {
+            res.json(resp);
+        } catch (e) {
             console.log(e.message);
-            res.status(400).send(e.message);
+            res.status(400).json({error_message: e.message});
         }
     });
     app.post('/sendTransaction', (req, res) => {
@@ -119,25 +131,24 @@ const initHttpServer = (myHttpPort) => {
                 throw Error('invalid address or amount');
             }
             const resp = blockchain.sendTransaction(address, amount);
-            res.send(resp);
-        }
-        catch (e) {
+            res.json(resp);
+        } catch (e) {
             console.log(e.message);
-            res.status(400).send(e.message);
+            res.status(400).json({error_message: e.message});
         }
     });
     app.get('/transactionPool', (req, res) => {
-        res.send(transactionPool.getTransactionPool());
+        res.json(transactionPool.getTransactionPool());
     });
     app.get('/peers', (req, res) => {
-        res.send(p2p.getSockets().map((s) => s._socket.remoteAddress + ':' + s._socket.remotePort));
+        res.json(p2p.getSockets().map((s) => s._socket.remoteAddress + ':' + s._socket.remotePort));
     });
     app.post('/addPeer', (req, res) => {
         p2p.connectToPeers(req.body.peer);
-        res.send();
+        res.json();
     });
     app.post('/stop', (req, res) => {
-        res.send({ 'msg': 'stopping server' });
+        res.json({'msg': 'stopping server'});
         process.exit();
     });
 

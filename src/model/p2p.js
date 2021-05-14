@@ -3,24 +3,35 @@ const blockchain = require("./blockchain");
 const transactionPool = require("./transactionPool");
 
 const sockets = [];
-var MessageType;
-(function (MessageType) {
-    MessageType[MessageType["QUERY_LATEST"] = 0] = "QUERY_LATEST";
-    MessageType[MessageType["QUERY_ALL"] = 1] = "QUERY_ALL";
-    MessageType[MessageType["RESPONSE_BLOCKCHAIN"] = 2] = "RESPONSE_BLOCKCHAIN";
-    MessageType[MessageType["QUERY_TRANSACTION_POOL"] = 3] = "QUERY_TRANSACTION_POOL";
-    MessageType[MessageType["RESPONSE_TRANSACTION_POOL"] = 4] = "RESPONSE_TRANSACTION_POOL";
-})(MessageType || (MessageType = {}));
+// var MessageType;
+// (function (MessageType) {
+//     MessageType[MessageType["QUERY_LATEST"] = 0] = "QUERY_LATEST";
+//     MessageType[MessageType["QUERY_ALL"] = 1] = "QUERY_ALL";
+//     MessageType[MessageType["RESPONSE_BLOCKCHAIN"] = 2] = "RESPONSE_BLOCKCHAIN";
+//     MessageType[MessageType["QUERY_TRANSACTION_POOL"] = 3] = "QUERY_TRANSACTION_POOL";
+//     MessageType[MessageType["RESPONSE_TRANSACTION_POOL"] = 4] = "RESPONSE_TRANSACTION_POOL";
+// })(MessageType || (MessageType = {}));
+//
+// class Message {
+// }
 
-class Message {
+const MessageType = {
+    QUERY_LATEST: 0,
+    QUERY_ALL: 1,
+    RESPONSE_BLOCKCHAIN: 2,
+    QUERY_TRANSACTION_POOL: 3,
+    RESPONSE_TRANSACTION_POOL: 4
 }
 
+let server;
 const initP2PServer = (p2pPort) => {
-    const server = new WebSocket.Server({ port: p2pPort });
-    server.on('connection', (ws) => {
-        initConnection(ws);
-    });
-    console.log('listening websocket p2p port on: ' + p2pPort);
+    if (!server) {
+        server = new WebSocket.Server({port: p2pPort});
+        server.on('connection', (ws) => {
+            initConnection(ws);
+        });
+        console.log('listening websocket p2p port on: ' + p2pPort);
+    }
 };
 exports.initP2PServer = initP2PServer;
 
@@ -41,8 +52,7 @@ const initConnection = (ws) => {
 const JSONToObject = (data) => {
     try {
         return JSON.parse(data);
-    }
-    catch (e) {
+    } catch (e) {
         console.log(e);
         return null;
     }
@@ -87,24 +97,25 @@ const initMessageHandler = (ws) => {
                             // if no error is thrown, transaction was indeed added to the pool
                             // let's broadcast transaction pool
                             broadCastTransactionPool();
-                        }
-                        catch (e) {
+                        } catch (e) {
                             console.log(e.message);
                         }
                     });
                     break;
             }
-        }
-        catch (e) {
+        } catch (e) {
             console.log(e);
         }
     });
 };
 
-const write = (ws, message) => ws.send(JSON.stringify(message));
-const broadcast = (message) => sockets.forEach((socket) => write(socket, message));
-const queryChainLengthMsg = () => ({ 'type': MessageType.QUERY_LATEST, 'data': null });
-const queryAllMsg = () => ({ 'type': MessageType.QUERY_ALL, 'data': null });
+const write = (ws, message) => {
+    console.log("Send message: " + JSON.stringify(message));
+    ws.send(JSON.stringify(message));
+}
+const broadcast = (message) => server.clients.forEach((socket) => write(socket, message));
+const queryChainLengthMsg = () => ({'type': MessageType.QUERY_LATEST, 'data': null});
+const queryAllMsg = () => ({'type': MessageType.QUERY_ALL, 'data': null});
 const responseChainMsg = () => ({
     'type': MessageType.RESPONSE_BLOCKCHAIN, 'data': JSON.stringify(blockchain.getBlockchain())
 });
@@ -135,7 +146,7 @@ const handleBlockchainResponse = (receivedBlocks) => {
     }
     const latestBlockReceived = receivedBlocks[receivedBlocks.length - 1];
     if (!blockchain.isValidBlockStructure(latestBlockReceived)) {
-        console.log('block structuture not valid');
+        console.log('block structure not valid');
         return;
     }
     const latestBlockHeld = blockchain.getLatestBlock();
@@ -146,17 +157,14 @@ const handleBlockchainResponse = (receivedBlocks) => {
             if (blockchain.addBlockToChain(latestBlockReceived)) {
                 broadcast(responseLatestMsg());
             }
-        }
-        else if (receivedBlocks.length === 1) {
+        } else if (receivedBlocks.length === 1) {
             console.log('We have to query the chain from our peer');
             broadcast(queryAllMsg());
-        }
-        else {
+        } else {
             console.log('Received blockchain is longer than current blockchain');
             blockchain.replaceChain(receivedBlocks);
         }
-    }
-    else {
+    } else {
         console.log('received blockchain is not longer than received blockchain. Do nothing');
     }
 };

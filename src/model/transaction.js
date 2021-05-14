@@ -137,7 +137,7 @@ const validateCoinbaseTx = (transaction, blockIndex) => {
 };
 
 const validateTxIn = (txIn, transaction, aUnspentTxOuts) => {
-    const referencedUTxOut = aUnspentTxOuts.find((uTxO) => uTxO.txOutId === txIn.txOutId && uTxO.txOutId === txIn.txOutId);
+    const referencedUTxOut = aUnspentTxOuts.find((uTxO) => uTxO.txOutId === txIn.txOutId && uTxO.txOutIndex === txIn.txOutIndex);
     if (referencedUTxOut == null) {
         console.log('referenced txOut not found: ' + JSON.stringify(txIn));
         return false;
@@ -270,11 +270,7 @@ const isValidTxOutStructure = (txOut) => {
         return true;
     }
 };
-const isValidTransactionsStructure = (transactions) => {
-    return transactions
-        .map(isValidTransactionStructure)
-        .reduce((a, b) => (a && b), true);
-};
+
 const isValidTransactionStructure = (transaction) => {
     if (typeof transaction.id !== 'string') {
         console.log('transactionId missing');

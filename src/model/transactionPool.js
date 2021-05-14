@@ -2,6 +2,7 @@ exports.updateTransactionPool = exports.getTransactionPool = exports.addToTransa
 const _ = require("lodash");
 const transaction = require("./transaction");
 let transactionPool = [];
+
 const getTransactionPool = () => {
     return _.cloneDeep(transactionPool);
 };
