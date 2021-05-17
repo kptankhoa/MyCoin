@@ -2,6 +2,16 @@ const fs = require('fs')
 const blockchain = require('./blockchain');
 
 const getKeys = () => {
+    try {
+        const data = fs.readFileSync('data/keys.json');
+        if (data.length !== 0) {
+            return JSON.parse(data.toString());
+        }
+        return [];
+    } catch (err) {
+        // console.log(err);
+        return [];
+    }
     const data = fs.readFileSync('data/keys.json');
     return JSON.parse(data.toString());
 }
@@ -19,7 +29,6 @@ const rewriteKeySet = (keys) => {
 }
 exports.rewriteKeySet = rewriteKeySet;
 
-
 const getChain = () => {
     try {
         const data = fs.readFileSync('data/chain.json');
@@ -28,7 +37,7 @@ const getChain = () => {
         }
         return null;
     } catch (err) {
-        console.log(err);
+        // console.log(err);
         return null;
     }
 }

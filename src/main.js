@@ -11,6 +11,7 @@ const blockchain = require("./model/blockchain");
 const p2p = require("./model/p2p");
 const transactionPool = require("./model/transactionPool");
 const wallet = require("./model/wallet");
+const transaction = require("./model/transaction");
 
 const httpPort = parseInt(process.env.HTTP_PORT) || 3001;
 const p2pPort = parseInt(process.env.P2P_PORT) || 6001;
@@ -68,15 +69,15 @@ const initHttpServer = (myHttpPort) => {
         res.json(block);
     });
     app.get('/transaction/:id', (req, res) => {
-        const tx = _(blockchain.getBlockchain())
-            .map((blocks) => blocks.data)
-            .flatten()
-            .find({'id': req.params.id});
-        res.json(tx);
+        const tx = transaction.getTransactionById(req.params.id, blockchain.getBlockchain());
+        const txInsData = transaction.getTxInsAddresses(tx, blockchain.getBlockchain());
+        const blockInclude = transaction.getBlockIncludeTx(tx, blockchain.getBlockchain());
+        res.json({tx, txInsData, blockInclude});
     });
     app.get('/address/:address', (req, res) => {
-        const unspentTxOuts = _.filter(blockchain.getUnspentTxOuts(), (uTxO) => uTxO.address === req.params.address);
-        res.json({'unspentTxOuts': unspentTxOuts});
+        const txsRelated = wallet.getTxsRelated(req.params.address, blockchain.getBlockchain());
+        const finalBalance = wallet.getBalance(req.params.address, blockchain.getUnspentTxOuts());
+        res.json({txsRelated, finalBalance});
     });
     app.get('/unspentTransactionOutputs', (req, res) => {
         res.json(blockchain.getUnspentTxOuts());
@@ -97,9 +98,15 @@ const initHttpServer = (myHttpPort) => {
         }
     });
     app.post('/mineBlock', (req, res) => {
-        const newBlock = blockchain.generateNextBlock();
+        let newBlock;
+        try {
+            newBlock = blockchain.generateNextBlock();
+        } catch (e) {
+            console.log(e.message);
+            res.status(400).json({error_message: e.message});
+        }
         if (newBlock === null) {
-            res.status(400).json({error_message: 'could not generate block'});
+            res.status(400).json({error_message: 'Could not generate block'});
         } else {
             res.json(newBlock);
         }
@@ -139,6 +146,12 @@ const initHttpServer = (myHttpPort) => {
     });
     app.get('/transactionPool', (req, res) => {
         res.json(transactionPool.getTransactionPool());
+    });
+    app.get('/transactionPool/:id', (req, res) => {
+        const tx = _(transactionPool.getTransactionPool())
+            .find({'id': req.params.id});
+        const txInsData = transaction.getTxInsAddresses(tx, blockchain.getBlockchain());
+        res.json({tx, txInsData});
     });
     app.get('/peers', (req, res) => {
         res.json(p2p.getSockets().map((s) => s._socket.remoteAddress + ':' + s._socket.remotePort));

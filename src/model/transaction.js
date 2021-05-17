@@ -4,7 +4,6 @@ const _ = require("lodash");
 const ec = new ecdsa.ec('secp256k1');
 
 const COINBASE_AMOUNT = 50;
-exports.COINBASE_AMOUNT = COINBASE_AMOUNT;
 
 class UnspentTxOut {
     constructor(txOutId, txOutIndex, address, amount) {
@@ -18,6 +17,7 @@ exports.UnspentTxOut = UnspentTxOut;
 
 class TxIn {
 }
+
 exports.TxIn = TxIn;
 
 class TxOut {
@@ -93,14 +93,13 @@ const validateBlockTransactions = (aTransactions, aUnspentTxOuts, blockIndex) =>
 };
 
 const hasDuplicates = (txIns) => {
-    const groups = _.countBy(txIns, (txIn) => txIn.txOutId + txIn.txOutId);
+    const groups = _.countBy(txIns, (txIn) => txIn.txOutId + txIn.txOutIndex);
     return _(groups)
         .map((value, key) => {
             if (value > 1) {
                 console.log('duplicate txIn: ' + key);
                 return true;
-            }
-            else {
+            } else {
                 return false;
             }
         })
@@ -232,20 +231,16 @@ const isValidTxInStructure = (txIn) => {
     if (txIn == null) {
         console.log('txIn is null');
         return false;
-    }
-    else if (typeof txIn.signature !== 'string') {
+    } else if (typeof txIn.signature !== 'string') {
         console.log('invalid signature type in txIn');
         return false;
-    }
-    else if (typeof txIn.txOutId !== 'string') {
+    } else if (typeof txIn.txOutId !== 'string') {
         console.log('invalid txOutId type in txIn');
         return false;
-    }
-    else if (typeof txIn.txOutIndex !== 'number') {
+    } else if (typeof txIn.txOutIndex !== 'number') {
         console.log('invalid txOutIndex type in txIn');
         return false;
-    }
-    else {
+    } else {
         return true;
     }
 };
@@ -253,20 +248,16 @@ const isValidTxOutStructure = (txOut) => {
     if (txOut == null) {
         console.log('txOut is null');
         return false;
-    }
-    else if (typeof txOut.address !== 'string') {
+    } else if (typeof txOut.address !== 'string') {
         console.log('invalid address type in txOut');
         return false;
-    }
-    else if (!isValidAddress(txOut.address)) {
+    } else if (!isValidAddress(txOut.address)) {
         console.log('invalid TxOut address');
         return false;
-    }
-    else if (typeof txOut.amount !== 'number') {
+    } else if (typeof txOut.amount !== 'number') {
         console.log('invalid amount type in txOut');
         return false;
-    }
-    else {
+    } else {
         return true;
     }
 };
@@ -302,16 +293,54 @@ const isValidAddress = (address) => {
     if (address.length !== 130) {
         console.log('invalid public key length');
         return false;
-    }
-    else if (address.match('^[a-fA-F0-9]+$') === null) {
+    } else if (address.match('^[a-fA-F0-9]+$') === null) {
         console.log('public key must contain only hex characters');
         return false;
-    }
-    else if (!address.startsWith('04')) {
+    } else if (!address.startsWith('04')) {
         console.log('public key must start with 04');
         return false;
     }
     return true;
 };
-
 exports.isValidAddress = isValidAddress;
+
+const getTransactionById = (txId, blockchain) => {
+    return _(blockchain)
+        .map((blocks) => blocks.data)
+        .flatten()
+        .find({'id': txId});
+}
+exports.getTransactionById = getTransactionById;
+
+function getBlockIncludeTx(transaction, chain) {
+    for (const block of chain) {
+        for (let i = 0; i < block.data.length; i++) {
+            if (block.data[i].id === transaction.id) {
+                return {index: block.index, hash: block.hash};
+            }
+        }
+    }
+    return null;
+}
+exports.getBlockIncludeTx = getBlockIncludeTx;
+
+function getTxInsAddresses(tx, chain) {
+    let res = [];
+    for (const txIn of tx.txIns) {
+        if (txIn.txOutId === "")
+            res.push({
+                address: 'COINBASE',
+                amount: 50
+            });
+        else {
+            let newId = txIn.txOutId;
+            let index = txIn.txOutIndex;
+            res.push(getTransactionById(newId, chain).txOuts[index]);
+        }
+    }
+    return res;
+}
+exports.getTxInsAddresses = getTxInsAddresses;
+
+
+

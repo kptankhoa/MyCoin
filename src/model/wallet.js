@@ -91,7 +91,7 @@ const findTxOutsForAmount = (amount, myUnspentTxOuts) => {
         currentAmount = currentAmount + myUnspentTxOut.amount;
         if (currentAmount >= amount) {
             const leftOverAmount = currentAmount - amount;
-            return { includedUnspentTxOuts, leftOverAmount };
+            return {includedUnspentTxOuts, leftOverAmount};
         }
     }
     const error_message = 'Cannot create transaction from the available unspent transaction outputs.' +
@@ -103,8 +103,7 @@ const createTxOuts = (receiverAddress, myAddress, amount, leftOverAmount) => {
     const txOut1 = new transaction.TxOut(receiverAddress, amount);
     if (leftOverAmount === 0) {
         return [txOut1];
-    }
-    else {
+    } else {
         const leftOverTx = new transaction.TxOut(myAddress, leftOverAmount);
         return [txOut1, leftOverTx];
     }
@@ -121,8 +120,7 @@ const filterTxPoolTxs = (unspentTxOuts, transactionPool) => {
             return aTxIn.txOutIndex === unspentTxOut.txOutIndex && aTxIn.txOutId === unspentTxOut.txOutId;
         });
         if (txIn === undefined) {
-        }
-        else {
+        } else {
             removable.push(unspentTxOut);
         }
     }
@@ -135,7 +133,7 @@ const createTransaction = (receiverAddress, amount, privateKey, unspentTxOuts, t
     const myUnspentTxOutsA = unspentTxOuts.filter((uTxO) => uTxO.address === myAddress);
     const myUnspentTxOuts = filterTxPoolTxs(myUnspentTxOutsA, txPool);
     // filter from unspentOutputs such inputs that are referenced in pool
-    const { includedUnspentTxOuts, leftOverAmount } = findTxOutsForAmount(amount, myUnspentTxOuts);
+    const {includedUnspentTxOuts, leftOverAmount} = findTxOutsForAmount(amount, myUnspentTxOuts);
     const toUnsignedTxIn = (unspentTxOut) => {
         const txIn = new transaction.TxIn();
         txIn.txOutId = unspentTxOut.txOutId;
@@ -154,3 +152,39 @@ const createTransaction = (receiverAddress, amount, privateKey, unspentTxOuts, t
     return tx;
 };
 exports.createTransaction = createTransaction;
+
+const getTxsRelated = (publicKey, blockchain = []) => {
+    const key = EC.keyFromPublic(publicKey, 'hex');
+    let totalSent = 0;
+    let totalReceived = 0;
+    let historyTxs = [];
+    const allTransaction = _(blockchain).map(block => block.data).flatten();
+    for (const tx of allTransaction) {
+        if (tx.txIns[0].signature && key.verify(tx.id, tx.txIns[0].signature)) {
+            totalSent += tx.txOuts[0].amount;
+            const txInfo = {
+                hash: tx.id,
+                type: 'Sent',
+                amount: tx.txOuts[0].amount
+            };
+            historyTxs.push(txInfo);
+        };
+        if (tx.txOuts[0].address === publicKey) {
+            totalReceived += tx.txOuts[0].amount;
+            const txInfo = {
+                hash: tx.id,
+                type: 'Received',
+                amount: tx.txOuts[0].amount
+            };
+            historyTxs.push(txInfo);
+        }
+    }
+
+    return ({
+        publicKey,
+        totalReceived,
+        totalSent,
+        historyTxs
+    });
+}
+exports.getTxsRelated = getTxsRelated;

@@ -5,6 +5,7 @@ const transactionPool = require("./transactionPool");
 const wallet = require("./wallet");
 const p2p = require("./p2p");
 const dataHandler = require("./dataHandler");
+const util = require("./util");
 
 class Block {
     constructor(index, hash, previousHash, timestamp, data, difficulty, nonce) {
@@ -17,7 +18,6 @@ class Block {
         this.nonce = nonce;
     }
 }
-
 exports.Block = Block;
 
 let blockchain = dataHandler.getChain();
@@ -30,7 +30,7 @@ if (!blockchain) {
         }],
         'id': 'e655f6a5f26dc9b4cac6e46f52336428287759cf81ef5ff10854f69d68f43fa3'
     };
-    const genesisBlock = new Block(0, 'a6737751dabaaafd8a080bdd793a77b33b83bcb6501450be77929b23b6f551b9', '', Math.round(Date.now() / 1000), [genesisTransaction], 2, 0);
+    const genesisBlock = new Block(0, 'a6737751dabaaafd8a080bdd793a77b33b83bcb6501450be77929b23b6f551b9', '', Math.round(Date.now() / 1000), [genesisTransaction], 8, 0);
     blockchain = [genesisBlock];
     dataHandler.rewriteChain(blockchain);
 }
@@ -43,6 +43,7 @@ const getBlockchain = () => blockchain;
 exports.getBlockchain = getBlockchain;
 const getUnspentTxOuts = () => _.cloneDeep(unspentTxOuts);
 exports.getUnspentTxOuts = getUnspentTxOuts;
+
 // and txPool should be only updated at the same time
 const setUnspentTxOuts = (newUnspentTxOut) => {
     console.log('replacing unspentTxouts');
@@ -71,6 +72,9 @@ const getAdjustedDifficulty = (latestBlock, aBlockchain) => {
     if (timeTaken < timeExpected / 2) {
         return prevAdjustmentBlock.difficulty + 1;
     } else if (timeTaken > timeExpected * 2) {
+        if(prevAdjustmentBlock.difficulty === 0) {
+            return prevAdjustmentBlock.difficulty;
+        }
         return prevAdjustmentBlock.difficulty - 1;
     } else {
         return prevAdjustmentBlock.difficulty;
@@ -101,6 +105,9 @@ const getMyUnspentTransactionOutputs = () => {
 exports.getMyUnspentTransactionOutputs = getMyUnspentTransactionOutputs;
 
 const generateNextBlock = () => {
+    if(!transactionPool.getTransactionPool().length){
+        throw Error('Transaction pool is empty!');
+    }
     const coinbaseTx = transaction.getCoinbaseTransaction(wallet.getPublicFromWallet(), getLatestBlock().index + 1);
     const blockData = [coinbaseTx].concat(transactionPool.getTransactionPool());
     return generateRawNextBlock(blockData);
@@ -111,17 +118,15 @@ const sendRegisterRwBlock = (address) => {
     const coinbaseTx = transaction.getCoinbaseTransaction(address, getLatestBlock().index + 1);
     const blockData = [coinbaseTx];
     return generateRawNextBlock(blockData);
-    // return transactionPool.addToTransactionPool(blockData, getUnspentTxOuts());
 };
-
 exports.sendRegisterRwBlock = sendRegisterRwBlock;
 
 const generateNextBlockWithTransaction = (receiverAddress, amount) => {
     if (!transaction.isValidAddress(receiverAddress)) {
-        throw Error('invalid address');
+        throw Error('Invalid address');
     }
     if (typeof amount !== 'number') {
-        throw Error('invalid amount');
+        throw Error('Invalid amount');
     }
     const coinbaseTx = transaction.getCoinbaseTransaction(wallet.getPublicFromWallet(), getLatestBlock().index + 1);
     const tx = wallet.createTransaction(receiverAddress, amount, wallet.getPrivateFromWallet(), getUnspentTxOuts(), transactionPool.getTransactionPool());
@@ -149,7 +154,6 @@ exports.getAccountBalance = getAccountBalance;
 const sendTransaction = (address, amount) => {
     const tx = wallet.createTransaction(address, amount, wallet.getPrivateFromWallet(), getUnspentTxOuts(), transactionPool.getTransactionPool());
     transactionPool.addToTransactionPool(tx, getUnspentTxOuts());
-    console.log("Broadcast transaction pool");
     p2p.broadCastTransactionPool();
     return tx;
 };
@@ -217,8 +221,11 @@ const hashMatchesBlockContent = (block) => {
 
 //PoW algorithm
 const hashMatchesDifficulty = (hash, difficulty) => {
+    const hashInBinary = util.hexToBinary(hash);
     const requiredPrefix = '0'.repeat(difficulty);
-    return hash.startsWith(requiredPrefix);
+    return hashInBinary.startsWith(requiredPrefix);
+    // const requiredPrefix = '0'.repeat(difficulty);
+    // return hash.startsWith(requiredPrefix);
 };
 
 /*

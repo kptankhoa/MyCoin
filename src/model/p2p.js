@@ -110,7 +110,7 @@ const initMessageHandler = (ws) => {
 };
 
 const write = (ws, message) => {
-    console.log("Send message: " + JSON.stringify(message));
+    // console.log("Send message: " + JSON.stringify(message));
     ws.send(JSON.stringify(message));
 }
 const broadcast = (message) => server.clients.forEach((socket) => write(socket, message));
