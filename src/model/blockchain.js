@@ -30,7 +30,7 @@ if (!blockchain) {
         }],
         'id': 'e655f6a5f26dc9b4cac6e46f52336428287759cf81ef5ff10854f69d68f43fa3'
     };
-    const genesisBlock = new Block(0, 'a6737751dabaaafd8a080bdd793a77b33b83bcb6501450be77929b23b6f551b9', '', Math.round(Date.now() / 1000), [genesisTransaction], 8, 0);
+    const genesisBlock = new Block(0, 'a6737751dabaaafd8a080bdd793a77b33b83bcb6501450be77929b23b6f551b9', '', Math.round(Date.now() / 1000), [genesisTransaction], 10, 0);
     blockchain = [genesisBlock];
     dataHandler.rewriteChain(blockchain);
 }

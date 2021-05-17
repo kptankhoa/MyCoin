@@ -1,16 +1,18 @@
 # MyCoin
-MyCoin: personal Blockchain project\
+MyCoin: Personal Blockchain Cryptocurrency Project\
 HCMC University of Science\
 Subject: New Technologies in Software Development\
 Author: Khoa Phan - Student ID: 1712537\
 Based on: NaiveCoin - https://github.com/lhartikk/naivecoin
 
-### Installation
+## Installation
 ```
 npm install
 npm start
+open '/mycoin-ui/index.html'
 ```
 
+## API Usage:
 ### Get blockchain
 ```
 curl http://localhost:3001/blocks
@@ -44,6 +46,10 @@ curl http://localhost:3001/balance
 ### Query information about a specific address
 ```
 curl http://localhost:3001/address/:address
+```
+### Query information about a specific block
+```
+curl http://localhost:3001/block/:hash
 ```
 
 ### Add peer
