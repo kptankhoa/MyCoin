@@ -6,6 +6,7 @@ const wallet = require("./wallet");
 const p2p = require("./p2p");
 const dataHandler = require("./dataHandler");
 const util = require("./util");
+const fs = require("fs");
 
 class Block {
     constructor(index, hash, previousHash, timestamp, data, difficulty, nonce) {
@@ -19,18 +20,19 @@ class Block {
     }
 }
 exports.Block = Block;
+const genesisTransaction = {
+    'txIns': [{'signature': '', 'txOutId': '', 'txOutIndex': 0}],
+    'txOuts': [{
+        'address': '04bfcab8722991ae774db48f934ca79cfb7dd991229153b9f732ba5334aafcd8e7266e47076996b55a14bf9913ee3145ce0cfc1372ada8ada74bd287450313534a',
+        'amount': 50
+    }],
+    'id': 'e655f6a5f26dc9b4cac6e46f52336428287759cf81ef5ff10854f69d68f43fa3'
+};
+const genesisBlock = new Block(0, 'a6737751dabaaafd8a080bdd793a77b33b83bcb6501450be77929b23b6f551b9', '', 1621267789, [genesisTransaction], 10, 0);
 
 let blockchain = dataHandler.getChain();
 if (!blockchain) {
-    const genesisTransaction = {
-        'txIns': [{'signature': '', 'txOutId': '', 'txOutIndex': 0}],
-        'txOuts': [{
-            'address': '04bfcab8722991ae774db48f934ca79cfb7dd991229153b9f732ba5334aafcd8e7266e47076996b55a14bf9913ee3145ce0cfc1372ada8ada74bd287450313534a',
-            'amount': 50
-        }],
-        'id': 'e655f6a5f26dc9b4cac6e46f52336428287759cf81ef5ff10854f69d68f43fa3'
-    };
-    const genesisBlock = new Block(0, 'a6737751dabaaafd8a080bdd793a77b33b83bcb6501450be77929b23b6f551b9', '', Math.round(Date.now() / 1000), [genesisTransaction], 10, 0);
+
     blockchain = [genesisBlock];
     dataHandler.rewriteChain(blockchain);
 }
@@ -154,7 +156,7 @@ exports.getAccountBalance = getAccountBalance;
 const sendTransaction = (address, amount) => {
     const tx = wallet.createTransaction(address, amount, wallet.getPrivateFromWallet(), getUnspentTxOuts(), transactionPool.getTransactionPool());
     transactionPool.addToTransactionPool(tx, getUnspentTxOuts());
-    p2p.broadCastTransactionPool();
+    p2p.broadcastTransactionPool();
     return tx;
 };
 exports.sendTransaction = sendTransaction;
@@ -296,3 +298,5 @@ const handleReceivedTransaction = (transaction) => {
     transactionPool.addToTransactionPool(transaction, getUnspentTxOuts());
 };
 exports.handleReceivedTransaction = handleReceivedTransaction;
+
+

@@ -192,3 +192,5 @@ const initHttpServer = (myHttpPort) => {
 initHttpServer(httpPort);
 p2p.initP2PServer(p2pPort);
 wallet.initWallet();
+
+p2p.connectToPeers()

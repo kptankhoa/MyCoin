@@ -1,152 +1,206 @@
-const WebSocket = require("ws");
 const blockchain = require("./blockchain");
 const transactionPool = require("./transactionPool");
-
-const sockets = [];
-// var MessageType;
-// (function (MessageType) {
-//     MessageType[MessageType["QUERY_LATEST"] = 0] = "QUERY_LATEST";
-//     MessageType[MessageType["QUERY_ALL"] = 1] = "QUERY_ALL";
-//     MessageType[MessageType["RESPONSE_BLOCKCHAIN"] = 2] = "RESPONSE_BLOCKCHAIN";
-//     MessageType[MessageType["QUERY_TRANSACTION_POOL"] = 3] = "QUERY_TRANSACTION_POOL";
-//     MessageType[MessageType["RESPONSE_TRANSACTION_POOL"] = 4] = "RESPONSE_TRANSACTION_POOL";
-// })(MessageType || (MessageType = {}));
-//
-// class Message {
-// }
+const dataHandler = require("./dataHandler");
+const WebSocket = require('ws');
+const fs = require("fs");
 
 const MessageType = {
     QUERY_LATEST: 0,
     QUERY_ALL: 1,
     RESPONSE_BLOCKCHAIN: 2,
     QUERY_TRANSACTION_POOL: 3,
-    RESPONSE_TRANSACTION_POOL: 4
+    RESPONSE_TRANSACTION_POOL: 4,
+    QUERY_NODES: 5,
+    RESPONSE_NODES: 6,
+    NODE_ADDRESS: 7
 }
 
 let server;
-const initP2PServer = (p2pPort) => {
+let myNodeUrl = "";
+function initP2PServer(port) {
     if (!server) {
-        server = new WebSocket.Server({port: p2pPort});
-        server.on('connection', (ws) => {
+        server = new WebSocket.Server({ port: port });
+        server.on('connection', (ws, req) => {
+            console.log("Connect to client " + ws._socket.remoteAddress);
+            // console.log(req);
             initConnection(ws);
         });
-        console.log('listening websocket p2p port on: ' + p2pPort);
+        myNodeUrl = `ws://localhost:${port}`;
+        console.log("Websoket server is running at port: " + port);
     }
-};
+    return server;
+}
 exports.initP2PServer = initP2PServer;
 
-const getSockets = () => sockets;
+function getSockets() {
+    return [...server.clients];
+}
 exports.getSockets = getSockets;
 
-const initConnection = (ws) => {
-    sockets.push(ws);
+
+function initConnection(ws) {
     initMessageHandler(ws);
     initErrorHandler(ws);
+
+    console.log("Send message to query latest block");
     write(ws, queryChainLengthMsg());
-    // query transactions pool only some time after chain query
+
     setTimeout(() => {
+        console.log("Send message to query transaction pool");
         broadcast(queryTransactionPoolMsg());
     }, 500);
-};
+}
 
-const JSONToObject = (data) => {
-    try {
-        return JSON.parse(data);
-    } catch (e) {
-        console.log(e);
-        return null;
-    }
-};
-
-const initMessageHandler = (ws) => {
+function initMessageHandler(ws) {
     ws.on('message', (data) => {
         try {
-            const message = JSONToObject(data);
+            const message = JSON.parse(data);
             if (message === null) {
-                console.log('could not parse received JSON message: ' + data);
+                console.log("Could not parse received JSON message: " + data);
                 return;
             }
-            console.log('Received message: %s', JSON.stringify(message));
+            console.log("Received message: " + JSON.stringify(message));
             switch (message.type) {
                 case MessageType.QUERY_LATEST:
+                    console.log("Response latest block to " + ws.url);
                     write(ws, responseLatestMsg());
                     break;
                 case MessageType.QUERY_ALL:
+                    console.log("Response blockchain to " + ws.url);
                     write(ws, responseChainMsg());
                     break;
                 case MessageType.RESPONSE_BLOCKCHAIN:
-                    const receivedBlocks = JSONToObject(message.data);
+                    const receivedBlocks = JSON.parse(message.data);
                     if (receivedBlocks === null) {
-                        console.log('invalid blocks received: %s', JSON.stringify(message.data));
+                        console.log("Invalid blocks received:");
+                        console.log(message.data);
                         break;
                     }
-                    handleBlockchainResponse(receivedBlocks);
+                    handleBlockChainResponse(receivedBlocks);
                     break;
                 case MessageType.QUERY_TRANSACTION_POOL:
                     write(ws, responseTransactionPoolMsg());
                     break;
                 case MessageType.RESPONSE_TRANSACTION_POOL:
-                    const receivedTransactions = JSONToObject(message.data);
-                    if (receivedTransactions === null) {
-                        console.log('invalid transaction received: %s', JSON.stringify(message.data));
+                    const receivedTransactionPool = JSON.parse(message.data);
+                    if (receivedTransactionPool === null) {
+                        console.log("Invalid transaction received: " + JSON.parse(message.data));
                         break;
                     }
-                    receivedTransactions.forEach((transaction) => {
+                    receivedTransactionPool.forEach(transaction => {
                         try {
                             blockchain.handleReceivedTransaction(transaction);
                             // if no error is thrown, transaction was indeed added to the pool
                             // let's broadcast transaction pool
-                            broadCastTransactionPool();
+                            broadcastTransactionPool();
                         } catch (e) {
                             console.log(e.message);
                         }
                     });
                     break;
+                case MessageType.NODE_ADDRESS:
+                    const remoteAddress = message.data;
+                    if (!isConnectedToNode(remoteAddress)) {
+                        connectToPeer(remoteAddress);
+                    }
+                    break;
+                default:
+                    console.log('Message type not found!');
+                    break;
             }
-        } catch (e) {
-            console.log(e);
+        } catch (error) {
+            console.log('error in function initMessageHandler!', error);
+            // throw new Error()
         }
     });
-};
-
-const write = (ws, message) => {
-    // console.log("Send message: " + JSON.stringify(message));
-    ws.send(JSON.stringify(message));
 }
-const broadcast = (message) => server.clients.forEach((socket) => write(socket, message));
-const queryChainLengthMsg = () => ({'type': MessageType.QUERY_LATEST, 'data': null});
-const queryAllMsg = () => ({'type': MessageType.QUERY_ALL, 'data': null});
-const responseChainMsg = () => ({
-    'type': MessageType.RESPONSE_BLOCKCHAIN, 'data': JSON.stringify(blockchain.getBlockchain())
-});
-const responseLatestMsg = () => ({
-    'type': MessageType.RESPONSE_BLOCKCHAIN,
-    'data': JSON.stringify([blockchain.getLatestBlock()])
-});
-const queryTransactionPoolMsg = () => ({
-    'type': MessageType.QUERY_TRANSACTION_POOL,
-    'data': null
-});
-const responseTransactionPoolMsg = () => ({
-    'type': MessageType.RESPONSE_TRANSACTION_POOL,
-    'data': JSON.stringify(transactionPool.getTransactionPool())
-});
-const initErrorHandler = (ws) => {
-    const closeConnection = (myWs) => {
-        console.log('connection failed to peer: ' + myWs.url);
-        sockets.splice(sockets.indexOf(myWs), 1);
+
+function initErrorHandler(ws) {
+    function closeConnection(websocket) {
+        console.log("Disconnect to peer: " + websocket.url);
+        // sockets.splice(sockets.indexOf(websocket), 1);
     };
+
     ws.on('close', () => closeConnection(ws));
     ws.on('error', () => closeConnection(ws));
-};
-const handleBlockchainResponse = (receivedBlocks) => {
+}
+
+/* ------------ Send message --------------*/
+function write(ws, message) {
+    console.log("message", JSON.stringify(message));
+    ws.send(JSON.stringify(message));
+}
+
+function broadcast(message) {
+    server.clients.forEach(client => {
+        if (client.readyState === WebSocket.OPEN) {
+            write(client, message);
+        }
+    });
+}
+
+function broadcastLatest() {
+    broadcast(responseLatestMsg());
+}
+exports.broadcastLatest=broadcastLatest;
+
+
+function broadcastTransactionPool() {
+    broadcast(responseTransactionPoolMsg());
+}
+exports.broadcastTransactionPool = broadcastTransactionPool;
+
+/*------------- Query message -------------*/
+function queryChainLengthMsg() {
+    return { type: MessageType.QUERY_LATEST, data: null };
+}
+
+function queryAllMsg() {
+    return { type: MessageType.QUERY_ALL, data: null };
+}
+
+function queryTransactionPoolMsg() {
+    return { type: MessageType.QUERY_TRANSACTION_POOL, data: null };
+}
+
+function nodeUrlMsg() {
+    return { type: MessageType.NODE_ADDRESS, data: myNodeUrl };
+}
+
+
+/*------------  Response message -----------*/
+function responseLatestMsg() {
+    const latestBlock = blockchain.getLatestBlock();
+    return {
+        type: MessageType.RESPONSE_BLOCKCHAIN,
+        data: JSON.stringify([latestBlock])
+    };
+}
+
+function responseChainMsg() {
+    return {
+        type: MessageType.RESPONSE_BLOCKCHAIN,
+        data: JSON.stringify(blockchain.getBlockchain())
+    };
+}
+
+function responseTransactionPoolMsg() {
+    return {
+        type: MessageType.RESPONSE_TRANSACTION_POOL,
+        data: JSON.stringify(transactionPool.getTransactionPool())
+    };
+}
+
+function handleBlockChainResponse(receivedBlocks) {
+    console.log("Handling block response...");
     if (receivedBlocks.length === 0) {
-        console.log('received block chain size of 0');
+        console.log("Received block chain size of 0");
         return;
     }
     const latestBlockReceived = receivedBlocks[receivedBlocks.length - 1];
+    // console.log(latestBlockReceived);
     if (!blockchain.isValidBlockStructure(latestBlockReceived)) {
-        console.log('block structure not valid');
+        console.log("Block structure not valid");
         return;
     }
     const latestBlockHeld = blockchain.getLatestBlock();
@@ -155,34 +209,69 @@ const handleBlockchainResponse = (receivedBlocks) => {
             + latestBlockHeld.index + ' Peer got: ' + latestBlockReceived.index);
         if (latestBlockHeld.hash === latestBlockReceived.previousHash) {
             if (blockchain.addBlockToChain(latestBlockReceived)) {
+                console.log("Add new block to chain successfully!");
+                dataHandler.rewriteChain(blockchain.getBlockchain());
+                console.log("Broadcast to response new block to network");
                 broadcast(responseLatestMsg());
             }
         } else if (receivedBlocks.length === 1) {
-            console.log('We have to query the chain from our peer');
+            // console.log("We have to query the chain from our peer");
+            console.log("Broadcast to query new blockchain to network");
             broadcast(queryAllMsg());
         } else {
-            console.log('Received blockchain is longer than current blockchain');
+            console.log("Received blockchain is longer than current blockchain");
             blockchain.replaceChain(receivedBlocks);
+            console.log("Replace blockchain successfully!");
+            dataHandler.rewriteChain(blockchain.getBlockchain());
+
         }
     } else {
-        console.log('received blockchain is not longer than received blockchain. Do nothing');
+        console.log("Received blockchain is not longer than your blockchain. Do nothing");
     }
-};
-const broadcastLatest = () => {
-    broadcast(responseLatestMsg());
-};
-exports.broadcastLatest = broadcastLatest;
-const connectToPeers = (newPeer) => {
-    const ws = new WebSocket(newPeer);
+}
+
+const connectedNodeUrls = [];
+
+function isConnectedToNode(url) {
+    return connectedNodeUrls.find(node => node === url) ? true : false;
+}
+
+function connectToPeer(url) {
+    const ws = new WebSocket(url);
+
     ws.on('open', () => {
+        write(ws, nodeUrlMsg());
         initConnection(ws);
+        //Save connected node url
+        connectedNodeUrls.push(url);
     });
+
+    ws.on('close', () => {
+        console.log('Connection close');
+        for (let i = 0; i < connectedNodeUrls.length; i++) {
+            if (connectedNodeUrls[i] === url) {
+                connectedNodeUrls.splice(i, 1);
+                break;
+            }
+        }
+    });
+
     ws.on('error', () => {
-        console.log('connection failed');
+        console.log('Connection error');
     });
-};
-exports.connectToPeers = connectToPeers;
-const broadCastTransactionPool = () => {
-    broadcast(responseTransactionPoolMsg());
-};
-exports.broadCastTransactionPool = broadCastTransactionPool;
+}
+
+function connectToPeers() {
+    const jsonString = fs.readFileSync('./data/host.json').toString();
+    console.log(jsonString);
+    if (jsonString.trim()) {
+        const hosts = JSON.parse(jsonString);
+        for (const host of hosts) {
+            if (host === myNodeUrl) continue;
+            console.log(`Connecting to ${host}...`);
+            connectToPeer(host);
+        }
+    }
+}
+exports.connectToPeers=connectToPeers;
+
